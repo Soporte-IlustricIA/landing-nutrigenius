@@ -215,6 +215,9 @@ export function useOpenClawSocket({
                   device: {
                     id: "webchat_" + crypto.randomUUID(),
                     nonce: typeof nonce === "string" ? nonce : undefined,
+                    publicKey: "",
+                    signature: "",
+                    signedAt: new Date().toISOString(),
                   },
                 },
               })
