@@ -36,7 +36,9 @@ npm run preview    # sirve el build
 ## Configuración clave
 
 - `VITE_OPENCLAW_WS_URL`: endpoint WebSocket de OpenClaw. Default: `wss://pruebas-openclaw-gateway.nvhqhw.easypanel.host`.
-- `VITE_OPENCLAW_API_KEY`: opcional. Si está presente, el widget autentica vía **subprotocol** (`openclaw.<apiKey>`) y además envía un mensaje `init` como fallback.
+- `VITE_OPENCLAW_API_KEY`: token de gateway para `connect.params.auth.token`.
+- `VITE_OPENCLAW_AGENT_ID`: opcional; se usa para construir una sesión por defecto (`agent:<id>:<id>:direct:<userId>`).
+- `VITE_OPENCLAW_SESSION_KEY`: recomendado en producción para fijar la sesión exacta del agente (ej. `agent:telegram:telegram:direct:1375121750`).
 
 Copia `.env.example` a `.env.local` y define lo que necesites.
 
@@ -51,9 +53,12 @@ Copia `.env.example` a `.env.local` y define lo que necesites.
 
 ### Protocolo de mensajes
 
-- Envío: `{ action: "sendMessage", text, userId, sessionId }`.
-- Init (si hay API key): `{ action: "init", apiKey, userId, sessionId, client }`.
-- Recepción: admite strings planos, `{ text }`, `{ message }`, `{ content }`, además de `{ type: "typing" | "ready" | "error" }` para eventos de control.
+- Handshake WS v3: espera `connect.challenge` y responde con `type:"req", method:"connect"` usando `client.id:"webchat"` y `client.mode:"webchat"`.
+- Envío: `type:"req", method:"chat.send", params:{ session, text }`.
+- Recepción: procesa eventos `chat` / `sessions.message` y respuestas `res` con `payload`.
+- La conexión requiere:
+  - origen permitido en `gateway.controlUi.allowedOrigins`,
+  - token con scope suficiente (mínimo `operator.read`; para enviar, `operator.write`).
 
 ## Handoff desde Stitch
 
@@ -131,7 +136,9 @@ Si añades GA4/GTM, el CTA dispara automáticamente un evento `cta_click` en `da
 
 ## Checklist antes de publicar
 
-- [ ] Definir `.env.local` con `VITE_OPENCLAW_WS_URL` y `VITE_OPENCLAW_API_KEY`.
+- [ ] Definir variables en Vercel: `VITE_OPENCLAW_WS_URL`, `VITE_OPENCLAW_API_KEY`, `VITE_OPENCLAW_AGENT_ID` (opcional), `VITE_OPENCLAW_SESSION_KEY`.
+- [ ] En OpenClaw, agregar `https://landing-nutrigenius.vercel.app` a `gateway.controlUi.allowedOrigins`.
+- [ ] Confirmar que el token usado por la landing incluye `operator.write`.
 - [ ] Reemplazar `hero-poster.svg` y `og-cover.svg` por JPG/PNG generados desde Kling y un editor.
 - [ ] Comprimir `loop-nutrigenius.mp4` si pesa demasiado (y opcionalmente añadir `.webm`).
 - [ ] Ajustar copy final en hero, beneficios y FAQ.

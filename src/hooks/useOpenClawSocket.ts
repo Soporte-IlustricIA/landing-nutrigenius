@@ -2,17 +2,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   type ChatMessage,
   type ConnectionStatus,
-  type InitPayload,
-  type OutgoingPayload,
   createId,
   getOrCreateSessionId,
   getOrCreateUserId,
-  parseIncomingEvent,
 } from "../lib/openclaw";
 
 type UseOpenClawSocketOptions = {
   url: string;
   apiKey?: string;
+  agentId?: string;
+  sessionKey?: string;
   enabled: boolean;
   typingGraceMs?: number;
 };
@@ -31,10 +30,68 @@ type UseOpenClawSocketResult = {
 const RECONNECT_BASE_MS = 1200;
 const RECONNECT_MAX_MS = 10_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
+const CONNECT_REQUEST_ID = "gateway_connect";
+
+type GatewayEventFrame = {
+  type: "event";
+  event: string;
+  payload?: unknown;
+};
+
+type GatewayResponseFrame = {
+  type: "res";
+  id: string;
+  ok: boolean;
+  payload?: unknown;
+  error?: { message?: string };
+};
+
+function parseFrame(raw: unknown): GatewayEventFrame | GatewayResponseFrame | null {
+  if (!raw || typeof raw !== "object") return null;
+  const data = raw as Record<string, unknown>;
+  if (data.type === "event" && typeof data.event === "string") {
+    return { type: "event", event: data.event, payload: data.payload };
+  }
+  if (
+    data.type === "res" &&
+    typeof data.id === "string" &&
+    typeof data.ok === "boolean"
+  ) {
+    return {
+      type: "res",
+      id: data.id,
+      ok: data.ok,
+      payload: data.payload,
+      error:
+        data.error && typeof data.error === "object"
+          ? (data.error as { message?: string })
+          : undefined,
+    };
+  }
+  return null;
+}
+
+function extractText(value: unknown): string | undefined {
+  if (typeof value === "string") return value;
+  if (!value || typeof value !== "object") return undefined;
+  const data = value as Record<string, unknown>;
+  const direct =
+    typeof data.text === "string"
+      ? data.text
+      : typeof data.message === "string"
+        ? data.message
+        : typeof data.content === "string"
+          ? data.content
+          : undefined;
+  if (direct) return direct;
+  return extractText(data.payload);
+}
 
 export function useOpenClawSocket({
   url,
   apiKey,
+  agentId,
+  sessionKey,
   enabled,
   typingGraceMs = 8000,
 }: UseOpenClawSocketOptions): UseOpenClawSocketResult {
@@ -48,6 +105,7 @@ export function useOpenClawSocket({
   const reconnectTimerRef = useRef<number | null>(null);
   const typingTimerRef = useRef<number | null>(null);
   const manuallyClosedRef = useRef(false);
+  const gatewayReadyRef = useRef(false);
 
   const userIdRef = useRef(getOrCreateUserId());
   const sessionIdRef = useRef(getOrCreateSessionId());
@@ -66,18 +124,21 @@ export function useOpenClawSocket({
     }, typingGraceMs);
   }, [clearTypingTimer, typingGraceMs]);
 
+  const resolveGatewaySession = useCallback(() => {
+    if (sessionKey) return sessionKey;
+    if (agentId) return `agent:${agentId}:${agentId}:direct:${userIdRef.current}`;
+    return sessionIdRef.current;
+  }, [agentId, sessionKey]);
+
   const openSocket = useCallback(() => {
     if (!enabled || !url) return;
 
     manuallyClosedRef.current = false;
+    gatewayReadyRef.current = false;
 
     let ws: WebSocket;
     try {
-      if (apiKey) {
-        ws = new WebSocket(url, [`openclaw.${apiKey}`, "openclaw.v1"]);
-      } else {
-        ws = new WebSocket(url);
-      }
+      ws = new WebSocket(url);
     } catch (err) {
       setStatus("error");
       setErrorMessage(
@@ -90,26 +151,6 @@ export function useOpenClawSocket({
     setStatus(reconnectAttemptsRef.current > 0 ? "reconnecting" : "connecting");
     setErrorMessage(null);
 
-    ws.onopen = () => {
-      reconnectAttemptsRef.current = 0;
-      setStatus("connected");
-
-      if (apiKey) {
-        const initPayload: InitPayload = {
-          action: "init",
-          apiKey,
-          userId: userIdRef.current,
-          sessionId: sessionIdRef.current,
-          client: "nutrigenius-landing",
-        };
-        try {
-          ws.send(JSON.stringify(initPayload));
-        } catch (err) {
-          console.warn("[openclaw] no se pudo enviar init", err);
-        }
-      }
-    };
-
     ws.onmessage = (event) => {
       let payload: unknown = event.data;
       if (typeof event.data === "string") {
@@ -120,48 +161,114 @@ export function useOpenClawSocket({
         }
       }
 
-      const parsed = parseIncomingEvent(payload);
-
-      switch (parsed.type) {
-        case "message": {
+      const frame = parseFrame(payload);
+      if (!frame) {
+        const text = extractText(payload);
+        if (text) {
           setMessages((prev) => [
             ...prev,
-            {
-              id: createId("bot"),
-              role: parsed.role ?? "bot",
-              text: parsed.text,
-              timestamp: Date.now(),
-            },
+            { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
           ]);
           setIsTyping(false);
           clearTypingTimer();
-          break;
         }
-        case "typing": {
-          setIsTyping(parsed.isTyping);
-          if (parsed.isTyping) armTypingGrace();
-          else clearTypingTimer();
-          break;
+        return;
+      }
+
+      if (frame.type === "event") {
+        if (frame.event === "connect.challenge") {
+          try {
+            ws.send(
+              JSON.stringify({
+                type: "req",
+                id: CONNECT_REQUEST_ID,
+                method: "connect",
+                params: {
+                  minProtocol: 3,
+                  maxProtocol: 3,
+                  client: {
+                    id: "webchat",
+                    version: "0.1.0",
+                    platform: "web",
+                    mode: "webchat",
+                  },
+                  role: "operator",
+                  scopes: ["operator.read", "operator.write"],
+                  caps: [],
+                  commands: [],
+                  permissions: {},
+                  auth: apiKey ? { token: apiKey } : {},
+                  locale: "es-ES",
+                  userAgent: "nutrigenius-landing",
+                },
+              })
+            );
+          } catch (err) {
+            setErrorMessage(
+              err instanceof Error
+                ? err.message
+                : "No se pudo enviar el handshake"
+            );
+          }
+          return;
         }
-        case "ready": {
+
+        if (frame.event === "chat" || frame.event === "sessions.message") {
+          const text = extractText(frame.payload);
+          if (text) {
+            setMessages((prev) => [
+              ...prev,
+              { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
+            ]);
+            setIsTyping(false);
+            clearTypingTimer();
+          }
+        }
+        return;
+      }
+
+      if (frame.id === CONNECT_REQUEST_ID) {
+        if (frame.ok) {
+          gatewayReadyRef.current = true;
           setStatus("connected");
-          break;
+          setErrorMessage(null);
+        } else {
+          setStatus("error");
+          setErrorMessage(frame.error?.message || "Handshake rechazado");
+          try {
+            ws.close(1000, "connect rejected");
+          } catch {
+            /* noop */
+          }
         }
-        case "error": {
-          setErrorMessage(parsed.message);
-          break;
-        }
-        default:
-          break;
+        return;
+      }
+
+      if (!frame.ok) {
+        setErrorMessage(frame.error?.message || "Error del gateway");
+        setIsTyping(false);
+        clearTypingTimer();
+        return;
+      }
+
+      const text = extractText(frame.payload);
+      if (text) {
+        setMessages((prev) => [
+          ...prev,
+          { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
+        ]);
+        setIsTyping(false);
+        clearTypingTimer();
       }
     };
 
     ws.onerror = () => {
-      setErrorMessage("Error de conexión con el agente");
+      setErrorMessage("Error de conexión con el gateway");
     };
 
-    ws.onclose = () => {
+    ws.onclose = (event) => {
       socketRef.current = null;
+      gatewayReadyRef.current = false;
       setIsTyping(false);
       clearTypingTimer();
 
@@ -173,7 +280,9 @@ export function useOpenClawSocket({
       if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
         setStatus("error");
         setErrorMessage(
-          "No pudimos mantener la conexión. Intenta de nuevo más tarde."
+          event.reason
+            ? `Conexión cerrada por el gateway (${event.code}): ${event.reason}`
+            : `Conexión cerrada por el gateway (${event.code})`
         );
         return;
       }
@@ -187,11 +296,10 @@ export function useOpenClawSocket({
       setStatus("reconnecting");
       reconnectTimerRef.current = window.setTimeout(openSocket, delay);
     };
-  }, [apiKey, armTypingGrace, clearTypingTimer, enabled, url]);
+  }, [apiKey, clearTypingTimer, enabled, url]);
 
   useEffect(() => {
     if (!enabled) return;
-
     openSocket();
 
     return () => {
@@ -209,6 +317,7 @@ export function useOpenClawSocket({
         }
         socketRef.current = null;
       }
+      gatewayReadyRef.current = false;
       reconnectAttemptsRef.current = 0;
       setStatus("idle");
     };
@@ -220,22 +329,26 @@ export function useOpenClawSocket({
       if (!trimmed) return false;
 
       const ws = socketRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) {
+      if (!ws || ws.readyState !== WebSocket.OPEN || !gatewayReadyRef.current) {
         setErrorMessage(
-          "Aún estamos conectando con el agente. Intenta de nuevo en un instante."
+          "El gateway aún no está listo. Intenta de nuevo en unos segundos."
         );
         return false;
       }
 
-      const payload: OutgoingPayload = {
-        action: "sendMessage",
-        text: trimmed,
-        userId: userIdRef.current,
-        sessionId: sessionIdRef.current,
-      };
-
+      const requestId = `chat_send_${Date.now().toString(36)}`;
       try {
-        ws.send(JSON.stringify(payload));
+        ws.send(
+          JSON.stringify({
+            type: "req",
+            id: requestId,
+            method: "chat.send",
+            params: {
+              session: resolveGatewaySession(),
+              text: trimmed,
+            },
+          })
+        );
       } catch (err) {
         setErrorMessage(
           err instanceof Error ? err.message : "No se pudo enviar el mensaje"
@@ -245,22 +358,18 @@ export function useOpenClawSocket({
 
       setMessages((prev) => [
         ...prev,
-        {
-          id: createId("user"),
-          role: "user",
-          text: trimmed,
-          timestamp: Date.now(),
-        },
+        { id: createId("user"), role: "user", text: trimmed, timestamp: Date.now() },
       ]);
       setIsTyping(true);
       armTypingGrace();
       return true;
     },
-    [armTypingGrace]
+    [armTypingGrace, resolveGatewaySession]
   );
 
   const reconnect = useCallback(() => {
     manuallyClosedRef.current = false;
+    gatewayReadyRef.current = false;
     reconnectAttemptsRef.current = 0;
     setErrorMessage(null);
     if (socketRef.current) {

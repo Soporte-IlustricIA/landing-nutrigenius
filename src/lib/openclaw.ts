@@ -20,14 +20,17 @@ export type OutgoingPayload = {
   text: string;
   userId: string;
   sessionId: string;
+  agentId?: string;
 };
 
 export type InitPayload = {
   action: "init";
-  apiKey: string;
+  apiKey?: string;
+  token?: string;
   userId: string;
   sessionId: string;
   client: "nutrigenius-landing";
+  agentId?: string;
 };
 
 export type IncomingEvent =
@@ -63,6 +66,15 @@ export function parseIncomingEvent(raw: unknown): IncomingEvent {
     };
   }
 
+  const nestedMessage =
+    data.message && typeof data.message === "object"
+      ? (data.message as Record<string, unknown>)
+      : undefined;
+  const nestedData =
+    data.data && typeof data.data === "object"
+      ? (data.data as Record<string, unknown>)
+      : undefined;
+
   const text =
     typeof data.text === "string"
       ? data.text
@@ -70,10 +82,27 @@ export function parseIncomingEvent(raw: unknown): IncomingEvent {
         ? data.message
         : typeof data.content === "string"
           ? data.content
-          : undefined;
+          : typeof nestedMessage?.text === "string"
+            ? nestedMessage.text
+            : typeof nestedMessage?.content === "string"
+              ? nestedMessage.content
+              : typeof nestedData?.text === "string"
+                ? nestedData.text
+                : typeof nestedData?.message === "string"
+                  ? nestedData.message
+                  : undefined;
 
   if (text) {
-    const role = data.sender === "user" ? "user" : "bot";
+    const rawRole =
+      typeof data.role === "string"
+        ? data.role
+        : typeof data.sender === "string"
+          ? data.sender
+          : typeof nestedMessage?.role === "string"
+            ? nestedMessage.role
+            : undefined;
+
+    const role = rawRole === "user" ? "user" : "bot";
     return { type: "message", text, role };
   }
 

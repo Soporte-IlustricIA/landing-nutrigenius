@@ -84,29 +84,29 @@ export function Hero() {
       </div>
 
       <div className="hero__content">
-        <p className="eyebrow">Nutrición personalizada con IA</p>
+        <p className="eyebrow">Tu nutrición, evolucionada.</p>
         <h1 className="hero__title">
           Tu nutrición,
           <br />
           guiada por <span className="grad">Nutrigenius</span>.
         </h1>
         <p className="hero__lede">
-          Cuéntale tu objetivo al agente de OpenClaw y recibe un plan a tu
-          medida en segundos. Sin formularios largos, sin fricción.
+        Habla con NutriGenius, el primer asistente inteligente que diseña tu alimentación en tiempo real. 
+        Resuelve dudas, personaliza tu menú y genera tu plan profesional en PDF al instante. 
+        Sin esperas, sin complicaciones.
         </p>
         <div className="hero__actions">
           <CtaButton location="hero" className="btn btn--primary btn--lg">
             Probar el agente
-            <ArrowIcon />
           </CtaButton>
           <a className="btn btn--link" href="#como-funciona">
             Ver cómo funciona
           </a>
         </div>
         <p className="hero__trust">
-          <span aria-hidden="true">·</span> Respuesta en &lt; 10 s
-          <span aria-hidden="true">·</span> Sin registro para probar
-          <span aria-hidden="true">·</span> Privacidad por diseño
+          <span aria-hidden="true">·</span> Respuesta rápida
+          <span aria-hidden="true">·</span> Criterio profesional
+          <span aria-hidden="true">·</span> Privacidad garantizada
         </p>
       </div>
 

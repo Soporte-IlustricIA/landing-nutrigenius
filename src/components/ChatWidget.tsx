@@ -7,7 +7,12 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { OPENCLAW_API_KEY, OPENCLAW_WS_URL } from "../config";
+import {
+  OPENCLAW_AGENT_ID,
+  OPENCLAW_API_KEY,
+  OPENCLAW_SESSION_KEY,
+  OPENCLAW_WS_URL,
+} from "../config";
 import type { ChatMessage, ConnectionStatus } from "../lib/openclaw";
 import { useOpenClawSocket } from "../hooks/useOpenClawSocket";
 
@@ -53,6 +58,8 @@ export function ChatWidget() {
   } = useOpenClawSocket({
     url: OPENCLAW_WS_URL,
     apiKey: OPENCLAW_API_KEY || undefined,
+    agentId: OPENCLAW_AGENT_ID || undefined,
+    sessionKey: OPENCLAW_SESSION_KEY || undefined,
     enabled: isOpen,
   });
 
