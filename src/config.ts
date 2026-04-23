@@ -17,3 +17,10 @@ export const OPENCLAW_SESSION_KEY =
 /** Último segmento de `agent:<id>:<id>:direct:<este>` (p. ej. user id de Telegram). */
 export const OPENCLAW_DIRECT_PEER_ID =
   (import.meta.env.VITE_OPENCLAW_DIRECT_PEER_ID as string | undefined) ?? "";
+
+/**
+ * Destino explícito para webchat en `chat.send.deliveryContext.to`.
+ * Si está vacío, se usa la misma `sessionKey` resuelta (recomendado para el widget).
+ */
+export const OPENCLAW_WEBCHAT_TO =
+  (import.meta.env.VITE_OPENCLAW_WEBCHAT_TO as string | undefined) ?? "";

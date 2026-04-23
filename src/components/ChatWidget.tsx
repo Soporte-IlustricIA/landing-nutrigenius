@@ -12,6 +12,7 @@ import {
   OPENCLAW_API_KEY,
   OPENCLAW_DIRECT_PEER_ID,
   OPENCLAW_SESSION_KEY,
+  OPENCLAW_WEBCHAT_TO,
   OPENCLAW_WS_URL,
 } from "../config";
 import type { ChatMessage, ConnectionStatus } from "../lib/openclaw";
@@ -73,6 +74,7 @@ export function ChatWidget() {
     agentId: OPENCLAW_AGENT_ID || undefined,
     sessionKey: OPENCLAW_SESSION_KEY || undefined,
     directPeerId: OPENCLAW_DIRECT_PEER_ID || undefined,
+    webchatTo: OPENCLAW_WEBCHAT_TO || undefined,
     enabled: isOpen,
   });
 

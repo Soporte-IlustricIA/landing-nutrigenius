@@ -19,6 +19,8 @@ type UseOpenClawSocketOptions = {
   sessionKey?: string;
   /** Con `agentId`, último segmento de `agent:<id>:<id>:direct:<peer>` (DM Telegram, etc.). */
   directPeerId?: string;
+  /** `deliveryContext.to` para webchat; por defecto = sessionKey resuelta. */
+  webchatTo?: string;
   enabled: boolean;
   typingGraceMs?: number;
 };
@@ -142,6 +144,7 @@ export function useOpenClawSocket({
   agentId,
   sessionKey,
   directPeerId,
+  webchatTo,
   enabled,
   typingGraceMs = 8000,
 }: UseOpenClawSocketOptions): UseOpenClawSocketResult {
@@ -187,6 +190,12 @@ export function useOpenClawSocket({
     if (aid) return `agent:${aid}:${sid}`;
     return `agent:main:${sid}`;
   }, [agentId, directPeerId, sessionKey]);
+
+  const resolveWebchatDeliveryTo = useCallback(() => {
+    const explicit = webchatTo?.trim();
+    if (explicit) return explicit;
+    return resolveGatewaySession();
+  }, [resolveGatewaySession, webchatTo]);
 
   const openSocket = useCallback(() => {
     if (!enabled || !url) return;
@@ -493,6 +502,10 @@ export function useOpenClawSocket({
               sessionKey: resolveGatewaySession(),
               message: trimmed,
               idempotencyKey,
+              deliveryContext: {
+                channel: "webchat",
+                to: resolveWebchatDeliveryTo(),
+              },
             },
           })
         );
@@ -511,7 +524,7 @@ export function useOpenClawSocket({
       armTypingGrace();
       return true;
     },
-    [armTypingGrace, resolveGatewaySession]
+    [armTypingGrace, resolveGatewaySession, resolveWebchatDeliveryTo]
   );
 
   const reconnect = useCallback(() => {
