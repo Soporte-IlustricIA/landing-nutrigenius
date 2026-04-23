@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { ArrowIcon } from "./ArrowIcon";
 import { CtaButton } from "./CtaButton";
 
 export function Hero() {

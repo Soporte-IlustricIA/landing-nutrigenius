@@ -1,4 +1,3 @@
-import { ArrowIcon } from "./ArrowIcon";
 import { CtaButton } from "./CtaButton";
 
 export function Steps() {
