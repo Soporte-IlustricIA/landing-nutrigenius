@@ -105,6 +105,23 @@ function splitMessageParts(text: string): MessagePart[] {
   return parts;
 }
 
+/** Solo incrustamos PDFs desde HTTPS (o http en localhost); si no, el navegador suele bloquear el iframe. */
+function canEmbedPdfInIframe(href: string): boolean {
+  try {
+    const u = new URL(href);
+    if (u.protocol === "https:") return true;
+    if (
+      u.protocol === "http:" &&
+      (u.hostname === "localhost" || u.hostname === "127.0.0.1")
+    ) {
+      return true;
+    }
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
   const [isExpanded, setIsExpanded] = useState(readExpandedPref);
@@ -420,8 +437,35 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : "rounded-bl-md bg-chat-surface text-chat-neon-soft",
         ].join(" ")}
       >
-        {parts.map((part, idx) =>
-          part.kind === "link" ? (
+        {parts.map((part, idx) => {
+          if (part.kind !== "link") {
+            return <span key={`${message.id}_text_${idx}`}>{part.value}</span>;
+          }
+          const showPdfPreview =
+            !isUser &&
+            /\.pdf($|\?)/i.test(part.href) &&
+            canEmbedPdfInIframe(part.href);
+          if (showPdfPreview) {
+            return (
+              <div key={`${message.id}_pdf_${idx}`} className="mt-2 space-y-2">
+                <iframe
+                  title="Vista previa del plan (PDF)"
+                  src={part.href}
+                  loading="lazy"
+                  className="h-64 w-full min-h-[14rem] rounded-lg border border-chat-border bg-chat-bg sm:h-80"
+                />
+                <a
+                  href={part.href}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-block text-xs text-chat-neon underline underline-offset-2 hover:opacity-90"
+                >
+                  Abrir o descargar en otra pestaña
+                </a>
+              </div>
+            );
+          }
+          return (
             <a
               key={`${message.id}_link_${idx}`}
               href={part.href}
@@ -434,10 +478,8 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             >
               {part.value}
             </a>
-          ) : (
-            <span key={`${message.id}_text_${idx}`}>{part.value}</span>
-          )
-        )}
+          );
+        })}
       </div>
     </div>
   );
