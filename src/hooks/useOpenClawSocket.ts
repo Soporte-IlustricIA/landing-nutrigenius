@@ -393,6 +393,10 @@ export function useOpenClawSocket({
       }
 
       const requestId = `chat_send_${Date.now().toString(36)}`;
+      const idempotencyKey =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${requestId}_${Math.random().toString(36).slice(2)}`;
       try {
         ws.send(
           JSON.stringify({
@@ -400,8 +404,9 @@ export function useOpenClawSocket({
             id: requestId,
             method: "chat.send",
             params: {
-              session: resolveGatewaySession(),
-              text: trimmed,
+              sessionKey: resolveGatewaySession(),
+              message: trimmed,
+              idempotencyKey,
             },
           })
         );
