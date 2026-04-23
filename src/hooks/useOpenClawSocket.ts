@@ -17,7 +17,7 @@ type UseOpenClawSocketOptions = {
   apiKey?: string;
   agentId?: string;
   sessionKey?: string;
-  /** Último segmento de `agent:<id>:<id>:direct:<peer>` (p. ej. id numérico de Telegram). */
+  /** Con `agentId`, último segmento de `agent:<id>:<id>:direct:<peer>` (DM Telegram, etc.). */
   directPeerId?: string;
   enabled: boolean;
   typingGraceMs?: number;
@@ -180,9 +180,12 @@ export function useOpenClawSocket({
     const aid = agentId?.trim();
     if (aid?.startsWith("agent:")) return aid;
     const peer = directPeerId?.trim();
+    const sid = sessionIdRef.current;
+    // DM / hilo externo explícito (p. ej. Telegram user id)
     if (aid && peer) return `agent:${aid}:${aid}:direct:${peer}`;
-    if (aid) return `agent:${aid}:${aid}:direct:${userIdRef.current}`;
-    return sessionIdRef.current;
+    // Webchat por canal: agent:<telegram|main|…>:<sessionId> (mismo sid en sessionStorage)
+    if (aid) return `agent:${aid}:${sid}`;
+    return `agent:main:${sid}`;
   }, [agentId, directPeerId, sessionKey]);
 
   const openSocket = useCallback(() => {

@@ -37,7 +37,7 @@ npm run preview    # sirve el build
 
 - `VITE_OPENCLAW_WS_URL`: endpoint WebSocket de OpenClaw. Default: `wss://pruebas-openclaw-gateway.nvhqhw.easypanel.host`.
 - `VITE_OPENCLAW_API_KEY`: token de gateway para `connect.params.auth.token`.
-- `VITE_OPENCLAW_AGENT_ID`: opcional; con `VITE_OPENCLAW_DIRECT_PEER_ID` forma `agent:<id>:<id>:direct:<peer>` (p. ej. Telegram). Sin peer, usa `direct:<userId>` del navegador (sesión web distinta de un DM de Telegram).
+- `VITE_OPENCLAW_AGENT_ID`: opcional; canal de la sesión web (`telegram`, `main`, …). Sin `SESSION_KEY` ni `DIRECT_PEER_ID` se usa `agent:<AGENT_ID>:<sessionId>` (mismo `sessionId` en `sessionStorage` por pestaña). Ej.: `telegram` → `agent:telegram:session_…`.
 - `VITE_OPENCLAW_SESSION_KEY`: **recomendado** para apuntar al hilo exacto (ej. `agent:telegram:telegram:direct:1375121750` o `agent:main:main`); tiene prioridad sobre `AGENT_ID` + `DIRECT_PEER_ID`.
 - `VITE_OPENCLAW_DIRECT_PEER_ID`: opcional; último segmento del `sessionKey` cuando solo defines `AGENT_ID` (p. ej. id numérico del chat de Telegram).
 
