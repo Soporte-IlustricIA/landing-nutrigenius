@@ -17,6 +17,8 @@ type UseOpenClawSocketOptions = {
   apiKey?: string;
   agentId?: string;
   sessionKey?: string;
+  /** Último segmento de `agent:<id>:<id>:direct:<peer>` (p. ej. id numérico de Telegram). */
+  directPeerId?: string;
   enabled: boolean;
   typingGraceMs?: number;
 };
@@ -92,11 +94,54 @@ function extractText(value: unknown): string | undefined {
   return extractText(data.payload);
 }
 
+function textFromContentBlocks(content: unknown): string | undefined {
+  if (typeof content === "string") return content;
+  if (!Array.isArray(content)) return undefined;
+  const parts: string[] = [];
+  for (const part of content) {
+    if (typeof part === "string") {
+      parts.push(part);
+      continue;
+    }
+    if (!part || typeof part !== "object") continue;
+    const block = part as Record<string, unknown>;
+    if (typeof block.text === "string") parts.push(block.text);
+    else if (typeof block.content === "string") parts.push(block.content);
+  }
+  const joined = parts.join("\n").trim();
+  return joined || undefined;
+}
+
+/** Transcript `session.message` (OpenClaw): payload.message con role + content[]. */
+function extractAssistantFromSessionMessagePayload(payload: unknown): string | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const root = payload as Record<string, unknown>;
+  const message = root.message;
+  if (!message || typeof message !== "object") return undefined;
+  const msg = message as Record<string, unknown>;
+  const role = typeof msg.role === "string" ? msg.role.toLowerCase() : "";
+  if (role === "user" || role === "human") return undefined;
+
+  if (typeof msg.text === "string") return msg.text;
+  const fromBlocks = textFromContentBlocks(msg.content);
+  if (fromBlocks) return fromBlocks;
+  return extractText(message);
+}
+
+function extractIncomingAssistantText(event: string, payload: unknown): string | undefined {
+  if (event === "session.message") {
+    const t = extractAssistantFromSessionMessagePayload(payload);
+    if (t) return t;
+  }
+  return extractText(payload);
+}
+
 export function useOpenClawSocket({
   url,
   apiKey,
   agentId,
   sessionKey,
+  directPeerId,
   enabled,
   typingGraceMs = 8000,
 }: UseOpenClawSocketOptions): UseOpenClawSocketResult {
@@ -130,10 +175,15 @@ export function useOpenClawSocket({
   }, [clearTypingTimer, typingGraceMs]);
 
   const resolveGatewaySession = useCallback(() => {
-    if (sessionKey) return sessionKey;
-    if (agentId) return `agent:${agentId}:${agentId}:direct:${userIdRef.current}`;
+    const sk = sessionKey?.trim();
+    if (sk) return sk;
+    const aid = agentId?.trim();
+    if (aid?.startsWith("agent:")) return aid;
+    const peer = directPeerId?.trim();
+    if (aid && peer) return `agent:${aid}:${aid}:direct:${peer}`;
+    if (aid) return `agent:${aid}:${aid}:direct:${userIdRef.current}`;
     return sessionIdRef.current;
-  }, [agentId, sessionKey]);
+  }, [agentId, directPeerId, sessionKey]);
 
   const openSocket = useCallback(() => {
     if (!enabled || !url) return;
@@ -186,6 +236,15 @@ export function useOpenClawSocket({
         }
         return;
       }
+
+      const appendAssistant = (text: string) => {
+        setMessages((prev) => [
+          ...prev,
+          { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
+        ]);
+        setIsTyping(false);
+        clearTypingTimer();
+      };
 
       if (frame.type === "event") {
         if (frame.event === "connect.challenge") {
@@ -268,16 +327,13 @@ export function useOpenClawSocket({
           return;
         }
 
-        if (frame.event === "chat" || frame.event === "sessions.message") {
-          const text = extractText(frame.payload);
-          if (text) {
-            setMessages((prev) => [
-              ...prev,
-              { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
-            ]);
-            setIsTyping(false);
-            clearTypingTimer();
-          }
+        if (
+          frame.event === "chat" ||
+          frame.event === "session.message" ||
+          frame.event === "sessions.message"
+        ) {
+          const text = extractIncomingAssistantText(frame.event, frame.payload);
+          if (text) appendAssistant(text);
         }
         return;
       }
@@ -287,6 +343,28 @@ export function useOpenClawSocket({
           gatewayReadyRef.current = true;
           setStatus("connected");
           setErrorMessage(null);
+          const routeKey = resolveGatewaySession();
+          const subSess = `sub_sess_${Date.now().toString(36)}`;
+          const subMsg = `sub_msg_${Date.now().toString(36)}`;
+          try {
+            ws.send(
+              JSON.stringify({
+                type: "req",
+                id: subSess,
+                method: "sessions.subscribe",
+              })
+            );
+            ws.send(
+              JSON.stringify({
+                type: "req",
+                id: subMsg,
+                method: "sessions.messages.subscribe",
+                params: { key: routeKey },
+              })
+            );
+          } catch {
+            /* noop */
+          }
         } else {
           const msg = frame.error?.message || "Handshake rechazado";
           setStatus("error");
@@ -300,6 +378,18 @@ export function useOpenClawSocket({
         return;
       }
 
+      if (frame.id.startsWith("chat_send_")) {
+        if (!frame.ok) {
+          setErrorMessage(frame.error?.message || "Error al enviar el mensaje");
+        } else {
+          const text = extractText(frame.payload);
+          if (text) appendAssistant(text);
+        }
+        setIsTyping(false);
+        clearTypingTimer();
+        return;
+      }
+
       if (!frame.ok) {
         setErrorMessage(frame.error?.message || "Error del gateway");
         setIsTyping(false);
@@ -308,14 +398,7 @@ export function useOpenClawSocket({
       }
 
       const text = extractText(frame.payload);
-      if (text) {
-        setMessages((prev) => [
-          ...prev,
-          { id: createId("bot"), role: "bot", text, timestamp: Date.now() },
-        ]);
-        setIsTyping(false);
-        clearTypingTimer();
-      }
+      if (text) appendAssistant(text);
     };
 
     ws.onerror = () => {
@@ -352,7 +435,7 @@ export function useOpenClawSocket({
       setStatus("reconnecting");
       reconnectTimerRef.current = window.setTimeout(openSocket, delay);
     };
-  }, [apiKey, clearTypingTimer, enabled, url]);
+  }, [apiKey, clearTypingTimer, enabled, resolveGatewaySession, url]);
 
   useEffect(() => {
     if (!enabled) return;

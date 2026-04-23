@@ -6,6 +6,7 @@ interface ImportMetaEnv {
   readonly VITE_OPENCLAW_API_KEY?: string;
   readonly VITE_OPENCLAW_AGENT_ID?: string;
   readonly VITE_OPENCLAW_SESSION_KEY?: string;
+  readonly VITE_OPENCLAW_DIRECT_PEER_ID?: string;
 }
 
 interface ImportMeta {

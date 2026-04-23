@@ -10,6 +10,7 @@ import {
 import {
   OPENCLAW_AGENT_ID,
   OPENCLAW_API_KEY,
+  OPENCLAW_DIRECT_PEER_ID,
   OPENCLAW_SESSION_KEY,
   OPENCLAW_WS_URL,
 } from "../config";
@@ -60,6 +61,7 @@ export function ChatWidget() {
     apiKey: OPENCLAW_API_KEY || undefined,
     agentId: OPENCLAW_AGENT_ID || undefined,
     sessionKey: OPENCLAW_SESSION_KEY || undefined,
+    directPeerId: OPENCLAW_DIRECT_PEER_ID || undefined,
     enabled: isOpen,
   });
 

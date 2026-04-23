@@ -37,8 +37,9 @@ npm run preview    # sirve el build
 
 - `VITE_OPENCLAW_WS_URL`: endpoint WebSocket de OpenClaw. Default: `wss://pruebas-openclaw-gateway.nvhqhw.easypanel.host`.
 - `VITE_OPENCLAW_API_KEY`: token de gateway para `connect.params.auth.token`.
-- `VITE_OPENCLAW_AGENT_ID`: opcional; se usa para construir una sesión por defecto (`agent:<id>:<id>:direct:<userId>`).
-- `VITE_OPENCLAW_SESSION_KEY`: recomendado en producción para fijar la sesión exacta del agente (ej. `agent:telegram:telegram:direct:1375121750`).
+- `VITE_OPENCLAW_AGENT_ID`: opcional; con `VITE_OPENCLAW_DIRECT_PEER_ID` forma `agent:<id>:<id>:direct:<peer>` (p. ej. Telegram). Sin peer, usa `direct:<userId>` del navegador (sesión web distinta de un DM de Telegram).
+- `VITE_OPENCLAW_SESSION_KEY`: **recomendado** para apuntar al hilo exacto (ej. `agent:telegram:telegram:direct:1375121750` o `agent:main:main`); tiene prioridad sobre `AGENT_ID` + `DIRECT_PEER_ID`.
+- `VITE_OPENCLAW_DIRECT_PEER_ID`: opcional; último segmento del `sessionKey` cuando solo defines `AGENT_ID` (p. ej. id numérico del chat de Telegram).
 
 Copia `.env.example` a `.env.local` y define lo que necesites.
 
@@ -54,8 +55,9 @@ Copia `.env.example` a `.env.local` y define lo que necesites.
 ### Protocolo de mensajes
 
 - Handshake WS v3: espera `connect.challenge` y responde con `type:"req", method:"connect"` usando `client.id:"webchat"` y `client.mode:"webchat"`.
-- Envío: `type:"req", method:"chat.send", params:{ session, text }`.
-- Recepción: procesa eventos `chat` / `sessions.message` y respuestas `res` con `payload`.
+- Tras `connect` OK: `sessions.subscribe` y `sessions.messages.subscribe` con `params:{ key: "<sessionKey>" }` para recibir transcript.
+- Envío: `type:"req", method:"chat.send", params:{ sessionKey, message, idempotencyKey }`.
+- Recepción: eventos `session.message` / `chat` (payload con `message.content[]` en transcript) y `res` de `chat.send_*`.
 - La conexión requiere:
   - origen permitido en `gateway.controlUi.allowedOrigins`,
   - token con scope suficiente (mínimo `operator.read`; para enviar, `operator.write`).

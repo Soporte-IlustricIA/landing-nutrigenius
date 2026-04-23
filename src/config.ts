@@ -13,3 +13,7 @@ export const OPENCLAW_AGENT_ID =
 
 export const OPENCLAW_SESSION_KEY =
   (import.meta.env.VITE_OPENCLAW_SESSION_KEY as string | undefined) ?? "";
+
+/** Último segmento de `agent:<id>:<id>:direct:<este>` (p. ej. user id de Telegram). */
+export const OPENCLAW_DIRECT_PEER_ID =
+  (import.meta.env.VITE_OPENCLAW_DIRECT_PEER_ID as string | undefined) ?? "";
