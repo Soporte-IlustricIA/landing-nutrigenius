@@ -24,3 +24,7 @@ export const OPENCLAW_DIRECT_PEER_ID =
  */
 export const OPENCLAW_WEBCHAT_TO =
   (import.meta.env.VITE_OPENCLAW_WEBCHAT_TO as string | undefined) ?? "";
+
+/** Base pública para archivos generados en `/home/node/.openclaw/workspace/out/`. */
+export const OPENCLAW_DOWNLOAD_BASE_URL =
+  (import.meta.env.VITE_OPENCLAW_DOWNLOAD_BASE_URL as string | undefined) ?? "";

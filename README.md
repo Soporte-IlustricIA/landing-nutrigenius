@@ -41,6 +41,7 @@ npm run preview    # sirve el build
 - `VITE_OPENCLAW_SESSION_KEY`: **recomendado** para apuntar al hilo exacto (ej. `agent:telegram:telegram:direct:1375121750` o `agent:main:main`); tiene prioridad sobre `AGENT_ID` + `DIRECT_PEER_ID`.
 - `VITE_OPENCLAW_DIRECT_PEER_ID`: opcional; último segmento del `sessionKey` cuando solo defines `AGENT_ID` (p. ej. id numérico del chat de Telegram).
 - `VITE_OPENCLAW_WEBCHAT_TO`: opcional; valor de `chat.send` → `deliveryContext.to` para enrutar respuestas/archivos al widget. Por defecto se envía la misma `sessionKey` resuelta.
+- `VITE_OPENCLAW_DOWNLOAD_BASE_URL`: base pública para convertir rutas `MEDIA:/home/node/.openclaw/workspace/out/...` en links de descarga dentro del chat.
 
 Copia `.env.example` a `.env.local` y define lo que necesites.
 

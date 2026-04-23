@@ -11,6 +11,7 @@ import {
   OPENCLAW_AGENT_ID,
   OPENCLAW_API_KEY,
   OPENCLAW_DIRECT_PEER_ID,
+  OPENCLAW_DOWNLOAD_BASE_URL,
   OPENCLAW_SESSION_KEY,
   OPENCLAW_WEBCHAT_TO,
   OPENCLAW_WS_URL,
@@ -45,6 +46,9 @@ const STATUS_DOT: Record<ConnectionStatus, string> = {
 
 const OPEN_CHAT_EVENT = "nutrigenius:open-chat";
 const CHAT_EXPANDED_KEY = "nutrigenius.chatExpanded";
+const MEDIA_PATH_PREFIX = "/home/node/.openclaw/workspace/out/";
+const LINK_TOKEN_RE =
+  /(https?:\/\/\S+|MEDIA:\/home\/node\/\.openclaw\/workspace\/out\/\S+|\/home\/node\/\.openclaw\/workspace\/out\/\S+)/g;
 
 function readExpandedPref(): boolean {
   if (typeof window === "undefined") return false;
@@ -53,6 +57,53 @@ function readExpandedPref(): boolean {
   } catch {
     return false;
   }
+}
+
+function buildDownloadHref(rawToken: string): string | null {
+  const token = rawToken.trim();
+  if (!token) return null;
+  if (/^https?:\/\//i.test(token)) return token;
+
+  const normalized = token.startsWith("MEDIA:")
+    ? token.slice("MEDIA:".length)
+    : token;
+  if (!normalized.startsWith(MEDIA_PATH_PREFIX)) return null;
+  const rel = normalized.slice(MEDIA_PATH_PREFIX.length);
+  if (!rel) return null;
+
+  const base = OPENCLAW_DOWNLOAD_BASE_URL.trim().replace(/\/+$/, "");
+  if (!base) return null;
+  return `${base}/${encodeURI(rel)}`;
+}
+
+type MessagePart =
+  | { kind: "text"; value: string }
+  | { kind: "link"; value: string; href: string };
+
+function splitMessageParts(text: string): MessagePart[] {
+  const parts: MessagePart[] = [];
+  let cursor = 0;
+  for (const match of text.matchAll(LINK_TOKEN_RE)) {
+    const token = match[0];
+    const start = match.index ?? cursor;
+    if (start > cursor) {
+      parts.push({ kind: "text", value: text.slice(cursor, start) });
+    }
+    const href = buildDownloadHref(token);
+    if (href) {
+      const label = /\.pdf($|\?)/i.test(href)
+        ? "Descargar PDF"
+        : "Descargar archivo";
+      parts.push({ kind: "link", value: label, href });
+    } else {
+      parts.push({ kind: "text", value: token });
+    }
+    cursor = start + token.length;
+  }
+  if (cursor < text.length) {
+    parts.push({ kind: "text", value: text.slice(cursor) });
+  }
+  return parts;
 }
 
 export function ChatWidget() {
@@ -355,6 +406,7 @@ function WidgetHeader({
 
 function MessageBubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
+  const parts = splitMessageParts(message.text);
   return (
     <div
       className={[
@@ -370,7 +422,24 @@ function MessageBubble({ message }: { message: ChatMessage }) {
             : "rounded-bl-md bg-chat-surface text-chat-neon-soft",
         ].join(" ")}
       >
-        {message.text}
+        {parts.map((part, idx) =>
+          part.kind === "link" ? (
+            <a
+              key={`${message.id}_link_${idx}`}
+              href={part.href}
+              target="_blank"
+              rel="noreferrer"
+              className={[
+                "underline underline-offset-2 transition-opacity",
+                isUser ? "text-chat-bg/90 hover:text-chat-bg" : "text-chat-neon hover:opacity-85",
+              ].join(" ")}
+            >
+              {part.value}
+            </a>
+          ) : (
+            <span key={`${message.id}_text_${idx}`}>{part.value}</span>
+          )
+        )}
       </div>
     </div>
   );
