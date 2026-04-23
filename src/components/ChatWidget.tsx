@@ -43,9 +43,20 @@ const STATUS_DOT: Record<ConnectionStatus, string> = {
 };
 
 const OPEN_CHAT_EVENT = "nutrigenius:open-chat";
+const CHAT_EXPANDED_KEY = "nutrigenius.chatExpanded";
+
+function readExpandedPref(): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    return window.sessionStorage.getItem(CHAT_EXPANDED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 export function ChatWidget() {
   const [isOpen, setIsOpen] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(readExpandedPref);
   const [input, setInput] = useState("");
   const audioCtxRef = useRef<AudioContext | null>(null);
 
@@ -167,6 +178,18 @@ export function ChatWidget() {
   const canSend =
     status === "connected" && input.trim().length > 0 && !isTyping;
 
+  const toggleExpanded = useCallback(() => {
+    setIsExpanded((v) => {
+      const next = !v;
+      try {
+        window.sessionStorage.setItem(CHAT_EXPANDED_KEY, next ? "1" : "0");
+      } catch {
+        /* noop */
+      }
+      return next;
+    });
+  }, []);
+
   return (
     <div className="pointer-events-none fixed inset-0 z-50 font-sans">
       <div className="pointer-events-auto absolute bottom-6 right-6 flex flex-col items-end gap-4 sm:bottom-8 sm:right-8">
@@ -175,18 +198,31 @@ export function ChatWidget() {
             role="dialog"
             aria-modal="false"
             aria-label="Chat con Nutrigenius"
-            className="w-[min(94vw,28rem)] origin-bottom-right animate-fade-in overflow-hidden rounded-3xl border border-chat-border bg-chat-bg text-chat-neon-soft shadow-panel backdrop-blur-xl"
+            className={[
+              "origin-bottom-right animate-fade-in overflow-hidden rounded-3xl border border-chat-border bg-chat-bg text-chat-neon-soft shadow-panel backdrop-blur-xl",
+              "flex flex-col",
+              isExpanded
+                ? "w-[min(96vw,44rem)] max-h-[min(92vh,40rem)] sm:max-h-[min(90vh,44rem)]"
+                : "w-[min(94vw,28rem)] max-h-[min(88vh,36rem)]",
+            ].join(" ")}
             style={{ backgroundColor: "#0b1410" }}
           >
             <WidgetHeader
               status={status}
+              expanded={isExpanded}
+              onToggleExpand={toggleExpanded}
               onClose={() => setIsOpen(false)}
               onReconnect={reconnect}
             />
 
             <div
               ref={scrollRef}
-              className="h-[26rem] space-y-3 overflow-y-auto px-4 py-4 sm:h-[30rem]"
+              className={[
+                "space-y-3 overflow-y-auto overflow-x-hidden px-4 py-4",
+                isExpanded
+                  ? "min-h-0 flex-1 sm:min-h-[20rem]"
+                  : "h-[26rem] shrink-0 sm:h-[30rem]",
+              ].join(" ")}
             >
               {messages.map((m) => (
                 <MessageBubble key={m.id} message={m} />
@@ -202,7 +238,7 @@ export function ChatWidget() {
 
             <form
               onSubmit={handleSubmit}
-              className="flex items-end gap-2 border-t border-chat-border bg-chat-panel px-3 py-3"
+              className="flex shrink-0 items-end gap-2 border-t border-chat-border bg-chat-panel px-3 py-3"
             >
               <textarea
                 ref={inputRef}
@@ -255,15 +291,19 @@ export function ChatWidget() {
 
 function WidgetHeader({
   status,
+  expanded,
+  onToggleExpand,
   onClose,
   onReconnect,
 }: {
   status: ConnectionStatus;
+  expanded: boolean;
+  onToggleExpand: () => void;
   onClose: () => void;
   onReconnect: () => void;
 }) {
   return (
-    <header className="flex items-center gap-3 border-b border-chat-border bg-chat-panel px-4 py-3">
+    <header className="flex shrink-0 items-center gap-3 border-b border-chat-border bg-chat-panel px-4 py-3">
       <div
         aria-hidden="true"
         className="grid h-9 w-9 place-items-center rounded-full bg-chat-neon/15 text-chat-neon"
@@ -291,9 +331,19 @@ function WidgetHeader({
       )}
       <button
         type="button"
+        onClick={onToggleExpand}
+        aria-pressed={expanded}
+        aria-label={expanded ? "Reducir ventana del chat" : "Ampliar ventana del chat"}
+        title={expanded ? "Vista compacta" : "Vista ampliada"}
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-chat-muted transition hover:bg-chat-surface hover:text-chat-neon-soft"
+      >
+        {expanded ? <CollapsePanelIcon /> : <ExpandPanelIcon />}
+      </button>
+      <button
+        type="button"
         onClick={onClose}
         aria-label="Cerrar chat"
-        className="grid h-8 w-8 place-items-center rounded-full text-chat-muted transition hover:bg-chat-surface hover:text-chat-neon-soft"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-chat-muted transition hover:bg-chat-surface hover:text-chat-neon-soft"
       >
         <CloseIcon />
       </button>
@@ -312,7 +362,7 @@ function MessageBubble({ message }: { message: ChatMessage }) {
     >
       <div
         className={[
-          "max-w-[85%] whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm",
+          "max-w-[85%] min-w-0 break-words whitespace-pre-wrap rounded-2xl px-3.5 py-2 text-sm leading-relaxed shadow-sm",
           isUser
             ? "rounded-br-md bg-chat-neon text-chat-bg"
             : "rounded-bl-md bg-chat-surface text-chat-neon-soft",
@@ -446,6 +496,34 @@ function SparkIcon() {
         stroke="currentColor"
         strokeWidth={1.6}
         strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+function ExpandPanelIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function CollapsePanelIcon() {
+  return (
+    <svg width={18} height={18} viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path
+        d="M4 14h6v6M14 4h6v6M10 14l4-4M14 10l-4 4"
+        stroke="currentColor"
+        strokeWidth={1.7}
+        strokeLinecap="round"
+        strokeLinejoin="round"
       />
     </svg>
   );
