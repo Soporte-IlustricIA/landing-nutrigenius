@@ -31,6 +31,7 @@ const RECONNECT_BASE_MS = 1200;
 const RECONNECT_MAX_MS = 10_000;
 const MAX_RECONNECT_ATTEMPTS = 5;
 const CONNECT_REQUEST_ID = "gateway_connect";
+type ConnectPayloadStyle = "structured" | "control-ui";
 
 type GatewayEventFrame = {
   type: "event";
@@ -106,6 +107,8 @@ export function useOpenClawSocket({
   const typingTimerRef = useRef<number | null>(null);
   const manuallyClosedRef = useRef(false);
   const gatewayReadyRef = useRef(false);
+  const connectStyleRef = useRef<ConnectPayloadStyle>("structured");
+  const connectRetryRef = useRef(false);
 
   const userIdRef = useRef(getOrCreateUserId());
   const sessionIdRef = useRef(getOrCreateSessionId());
@@ -132,9 +135,17 @@ export function useOpenClawSocket({
 
   const openSocket = useCallback(() => {
     if (!enabled || !url) return;
+    if (!apiKey) {
+      setStatus("error");
+      setErrorMessage(
+        "Falta VITE_OPENCLAW_API_KEY en el entorno de despliegue (Vercel)."
+      );
+      return;
+    }
 
     manuallyClosedRef.current = false;
     gatewayReadyRef.current = false;
+    connectRetryRef.current = false;
 
     let ws: WebSocket;
     try {
@@ -178,29 +189,40 @@ export function useOpenClawSocket({
       if (frame.type === "event") {
         if (frame.event === "connect.challenge") {
           try {
+            const connectParams =
+              connectStyleRef.current === "structured"
+                ? {
+                    minProtocol: 3,
+                    maxProtocol: 3,
+                    client: {
+                      id: "webchat",
+                      version: "0.1.0",
+                      platform: "web",
+                      mode: "webchat",
+                    },
+                    role: "operator",
+                    scopes: ["operator.read", "operator.write"],
+                    caps: [],
+                    commands: [],
+                    permissions: {},
+                    auth: { token: apiKey },
+                    locale: "es-ES",
+                    userAgent: "nutrigenius-landing",
+                  }
+                : {
+                    minProtocol: 3,
+                    maxProtocol: 3,
+                    client: "openclaw-control-ui",
+                    mode: "webchat",
+                    auth: { token: apiKey },
+                  };
+
             ws.send(
               JSON.stringify({
                 type: "req",
                 id: CONNECT_REQUEST_ID,
                 method: "connect",
-                params: {
-                  minProtocol: 3,
-                  maxProtocol: 3,
-                  client: {
-                    id: "webchat",
-                    version: "0.1.0",
-                    platform: "web",
-                    mode: "webchat",
-                  },
-                  role: "operator",
-                  scopes: ["operator.read", "operator.write"],
-                  caps: [],
-                  commands: [],
-                  permissions: {},
-                  auth: apiKey ? { token: apiKey } : {},
-                  locale: "es-ES",
-                  userAgent: "nutrigenius-landing",
-                },
+                params: connectParams,
               })
             );
           } catch (err) {
@@ -233,8 +255,36 @@ export function useOpenClawSocket({
           setStatus("connected");
           setErrorMessage(null);
         } else {
+          const msg = frame.error?.message || "Handshake rechazado";
+          if (
+            !connectRetryRef.current &&
+            /invalid connect params|client\/|mode/i.test(msg) &&
+            connectStyleRef.current === "structured"
+          ) {
+            connectRetryRef.current = true;
+            connectStyleRef.current = "control-ui";
+            try {
+              ws.send(
+                JSON.stringify({
+                  type: "req",
+                  id: CONNECT_REQUEST_ID,
+                  method: "connect",
+                  params: {
+                    minProtocol: 3,
+                    maxProtocol: 3,
+                    client: "openclaw-control-ui",
+                    mode: "webchat",
+                    auth: { token: apiKey },
+                  },
+                })
+              );
+              return;
+            } catch {
+              // Si falla el reintento, seguimos con error normal.
+            }
+          }
           setStatus("error");
-          setErrorMessage(frame.error?.message || "Handshake rechazado");
+          setErrorMessage(msg);
           try {
             ws.close(1000, "connect rejected");
           } catch {
@@ -370,6 +420,8 @@ export function useOpenClawSocket({
   const reconnect = useCallback(() => {
     manuallyClosedRef.current = false;
     gatewayReadyRef.current = false;
+    connectStyleRef.current = "structured";
+    connectRetryRef.current = false;
     reconnectAttemptsRef.current = 0;
     setErrorMessage(null);
     if (socketRef.current) {
