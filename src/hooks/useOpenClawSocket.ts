@@ -6,6 +6,11 @@ import {
   getOrCreateSessionId,
   getOrCreateUserId,
 } from "../lib/openclaw";
+import {
+  buildDeviceAuthPayloadV2,
+  loadOrCreateDeviceIdentity,
+  signDevicePayload,
+} from "../lib/openclawDeviceIdentity";
 
 type UseOpenClawSocketOptions = {
   url: string;
@@ -184,51 +189,82 @@ export function useOpenClawSocket({
 
       if (frame.type === "event") {
         if (frame.event === "connect.challenge") {
-          try {
-            const nonce =
-              frame.payload && typeof frame.payload === "object"
-                ? (frame.payload as Record<string, unknown>).nonce
-                : undefined;
+          void (async () => {
+            try {
+              if (!crypto.subtle) {
+                setErrorMessage(
+                  "Se requiere HTTPS o localhost para la identidad del dispositivo (WebCrypto)."
+                );
+                return;
+              }
+              const challenge =
+                frame.payload && typeof frame.payload === "object"
+                  ? (frame.payload as Record<string, unknown>)
+                  : undefined;
+              const nonce = typeof challenge?.nonce === "string" ? challenge.nonce : "";
+              if (!nonce) {
+                setErrorMessage("El gateway no envió nonce en connect.challenge.");
+                return;
+              }
 
-            ws.send(
-              JSON.stringify({
-                type: "req",
-                id: CONNECT_REQUEST_ID,
-                method: "connect",
-                params: {
-                  minProtocol: 3,
-                  maxProtocol: 3,
-                  client: {
-                    id: "webchat",
-                    version: "0.1.0",
-                    platform: "web",
-                    mode: "webchat",
+              const identity = await loadOrCreateDeviceIdentity();
+              const signedAtMs = Date.now();
+              const clientId = "webchat";
+              const clientMode = "webchat";
+              const role = "operator";
+              const scopes = ["operator.read", "operator.write"];
+              const token = apiKey ?? "";
+
+              const authPayload = buildDeviceAuthPayloadV2({
+                deviceId: identity.deviceId,
+                clientId,
+                clientMode,
+                role,
+                scopes,
+                signedAtMs,
+                token,
+                nonce,
+              });
+              const signature = await signDevicePayload(identity.privateKey, authPayload);
+
+              ws.send(
+                JSON.stringify({
+                  type: "req",
+                  id: CONNECT_REQUEST_ID,
+                  method: "connect",
+                  params: {
+                    minProtocol: 3,
+                    maxProtocol: 3,
+                    client: {
+                      id: clientId,
+                      version: "0.1.0",
+                      platform: "web",
+                      mode: clientMode,
+                    },
+                    role,
+                    scopes,
+                    caps: ["tool-events"],
+                    auth: { token },
+                    locale: "es-ES",
+                    userAgent: "nutrigenius-landing",
+                    device: {
+                      id: identity.deviceId,
+                      publicKey: identity.publicKey,
+                      signature,
+                      signedAt: signedAtMs,
+                      nonce,
+                    },
                   },
-                  role: "operator",
-                  scopes: ["operator.read", "operator.write"],
-                  caps: [],
-                  commands: [],
-                  permissions: {},
-                  auth: { token: apiKey },
-                  locale: "es-ES",
-                  userAgent: "nutrigenius-landing",
-                  device: {
-                    id: "webchat_" + crypto.randomUUID(),
-                    nonce: typeof nonce === "string" ? nonce : undefined,
-                    publicKey: "0",
-                    signature: "0",
-                    signedAt: Math.floor(Date.now() / 1000),
-                  },
-                },
-              })
-            );
-          } catch (err) {
-            setErrorMessage(
-              err instanceof Error
-                ? err.message
-                : "No se pudo enviar el handshake"
-            );
-          }
+                })
+              );
+            } catch (err) {
+              setErrorMessage(
+                err instanceof Error
+                  ? err.message
+                  : "No se pudo enviar el handshake"
+              );
+            }
+          })();
           return;
         }
 
