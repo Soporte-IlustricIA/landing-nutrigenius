@@ -14,7 +14,8 @@ nutrigenius-landing/
 │   ├── config.ts           Variables de entorno (URLs + API key)
 │   ├── index.css           Tailwind directives
 │   ├── styles/landing.css  Tokens y layout portados del diseño base
-│   ├── components/         SiteHeader, Hero, Sections, ChatWidget, ...
+│   ├── components/         SiteHeader, Hero, PlanPreviewSection, Sections, ChatWidget, ...
+│   ├── lib/                openclaw, planPreview (`?plan=`)
 │   ├── hooks/
 │   │   └── useOpenClawSocket.ts   Conexión WebSocket con auth híbrida y reconexión
 │   └── lib/openclaw.ts     Tipos y helpers de mensaje / sesión
@@ -42,8 +43,18 @@ npm run preview    # sirve el build
 - `VITE_OPENCLAW_DIRECT_PEER_ID`: opcional; último segmento del `sessionKey` cuando solo defines `AGENT_ID` (p. ej. id numérico del chat de Telegram).
 - `VITE_OPENCLAW_WEBCHAT_TO`: opcional; valor de `chat.send` → `deliveryContext.to` para enrutar respuestas/archivos al widget. Por defecto se envía la misma `sessionKey` resuelta.
 - `VITE_OPENCLAW_DOWNLOAD_BASE_URL`: base pública para convertir rutas `MEDIA:/home/node/.openclaw/workspace/out/...` en URL en el chat. En mensajes del **bot**, los PDF en **HTTPS** (o `http://localhost`) se muestran también en un **iframe** de vista previa; si el servidor del PDF envía `X-Frame-Options: DENY` / CSP que bloquea embed, solo verás el enlace “Abrir en otra pestaña”.
+- `VITE_PLAN_PREVIEW_ALLOWED_HOSTS`: lista separada por **comas** de **hostnames** (sin `https://`) cuyos PDF pueden cargarse con el parámetro `?plan=` (allowlist en cliente). Ej.: `files.tu-dominio.com,cdn.tu-dominio.com`. Para pruebas locales con `http://127.0.0.1` o `http://localhost`, incluye `localhost` y `127.0.0.1` en la lista.
 
 Copia `.env.example` a `.env.local` y define lo que necesites.
+
+### Vista previa del plan (`?plan=`)
+
+Si la URL incluye `?plan=` + `encodeURIComponent(urlDelPdf)`, la landing muestra la sección **“Tu plan / Vista previa del PDF”** (`#vista-previa-plan`) con un **iframe** y un enlace **Descargar PDF**. Sin el parámetro, la sección no se muestra.
+
+- La URL debe ser absoluta, apuntar a un **`.pdf`**, usar **`https:`** en producción, o **`http:`** solo en **localhost / 127.0.0.1 / [::1]**.
+- El **hostname** debe estar en `VITE_PLAN_PREVIEW_ALLOWED_HOSTS`. La comprobación es en el **navegador** (no sustituye control de acceso en el servidor del PDF); usa URLs firmadas o caducidad en el origen si el enlace puede filtrarse.
+- Algunos orígenes bloquean embed en iframe; en ese caso el usuario puede descargar o abrir en otra pestaña.
+- Ejemplo de servidor estático bajo `/out` con cabeceras aptas para desarrollo: [`plan-preview.server.example.js`](plan-preview.server.example.js) (Express; variable `PLAN_PREVIEW_ROOT`).
 
 ## Widget de chat (`src/components/ChatWidget.tsx`)
 
