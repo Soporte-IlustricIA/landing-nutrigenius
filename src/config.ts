@@ -1,5 +1,3 @@
-import { parseAllowedPlanHosts } from "./lib/planPreview";
-
 export const OPENCLAW_WS_URL =
   (import.meta.env.VITE_OPENCLAW_WS_URL as string | undefined) ??
   "wss://pruebas-openclaw-gateway.nvhqhw.easypanel.host";
@@ -30,8 +28,3 @@ export const OPENCLAW_WEBCHAT_TO =
 /** Base pública para archivos generados en `/home/node/.openclaw/workspace/out/`. */
 export const OPENCLAW_DOWNLOAD_BASE_URL =
   (import.meta.env.VITE_OPENCLAW_DOWNLOAD_BASE_URL as string | undefined) ?? "";
-
-/** Hostnames permitidos para `?plan=` (coma). Ej: `files.midominio.com,cdn.midominio.com`. */
-export const PLAN_PREVIEW_ALLOWED_HOSTS = parseAllowedPlanHosts(
-  import.meta.env.VITE_PLAN_PREVIEW_ALLOWED_HOSTS as string | undefined
-);

@@ -8,7 +8,6 @@ import {
   Steps,
 } from "./components/Sections";
 import { ChatWidget } from "./components/ChatWidget";
-import { PlanPreviewSection } from "./components/PlanPreviewSection";
 
 export default function App() {
   return (
@@ -21,7 +20,6 @@ export default function App() {
 
       <main id="contenido">
         <Hero />
-        <PlanPreviewSection />
         <Steps />
         <Benefits />
         <Faq />
